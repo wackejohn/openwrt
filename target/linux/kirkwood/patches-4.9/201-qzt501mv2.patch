@@ -1,0 +1,214 @@
+diff -urN linux-4.12.8_orig/arch/arm/boot/dts/kirkwood-qzt501mv2.dts linux-4.12.8/arch/arm/boot/dts/kirkwood-qzt501mv2.dts
+--- linux-4.12.8_orig/arch/arm/boot/dts/kirkwood-qzt501mv2.dts	1970-01-01 08:00:00.000000000 +0800
++++ linux-4.12.8/arch/arm/boot/dts/kirkwood-qzt501mv2.dts	2017-09-05 10:34:49.000000000 +0800
+@@ -0,0 +1,199 @@
++/* Device tree file for the QiZhiTong 501M V2 box.
++ *
++ * Copyright (c) 2015-2017  bodhi <mibodhi@gmail.com>
++ *                                          wacke <cao88yu@gmail.com>
++ *
++ * Based on
++ * Marvell RD88F6181 A Board descrition
++ * Andrew Lunn <andrew@lunn.ch>
++*/
++
++
++/dts-v1/;
++#include "kirkwood.dtsi"
++#include "kirkwood-6281.dtsi"
++
++/ {
++	model = "QiZhiTong 501M V2";
++	compatible = "qizhitong,501m_v2","marvell,rd88f6281-a", "marvell,rd88f6281","marvell,kirkwood-88f6281", "marvell,kirkwood";
++
++	chosen {
++		bootargs = "console=ttyS0,9600n8 earlyprintk";
++	};
++
++	ocp@f1000000 {
++		pinctrl: pin-controller@10000 {
++			pinctrl-names = "default";
++
++			pmx_sdio_cd: pmx-sdio-cd {
++				marvell,pins = "mpp28";
++				marvell,function = "gpio";
++			};
++		};
++
++		serial@12000 {
++			status = "okay";
++
++		};
++
++		sata@80000 {
++			status = "okay";
++			nr-ports = <1>;
++		};
++
++		mvsdio@90000 {
++			pinctrl-0 = <&pmx_sdio &pmx_sdio_cd>;
++			pinctrl-names = "default";
++			status = "okay";
++			cd-gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
++			/* No WP GPIO */
++		};
++	};
++
++	dsa {
++		status = "disabled";
++
++		compatible = "marvell,dsa";
++		#address-cells = <2>;
++		#size-cells = <0>;
++		
++		dsa,ethernet = <&eth0port>;
++		dsa,mii-bus = <&mdio>;
++
++		switch@10,0 {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			reg = <10 0>;	/* MDIO address 16, switch 0 in tree */
++			
++			port@0 {
++				reg = <0>;
++				label = "lan1";
++			};
++
++			port@1 {
++			       reg = <1>;
++			       label = "lan2";
++			};
++
++			port@2 {
++			       reg = <2>;
++			       label = "lan3";
++			};
++
++			port@3 {
++			       reg = <3>;
++			       label = "lan4";
++			};
++
++			port@4 {
++				reg = <4>;
++				label = "aux";
++			};
++
++			port@5 {
++			       reg = <5>;
++			       label = "cpu";
++			};
++		};
++	};
++
++};
++
++&nand {
++	status = "okay";
++
++	partition@0 {
++		label = "u-boot";
++		reg = <0x0000000 0x100000>;
++		read-only;
++	};
++
++	partition@100000 {
++		label = "kernel";
++		reg = <0x0100000 0x400000>;
++	};
++
++	partition@500000 {
++		label = "ubi";
++		reg = <0x0500000 0x3b00000>;
++	};
++};
++
++&mdio {
++	status = "okay";
++	
++	ethphy1: ethernet-phy@1 {
++		reg = <1>;
++	};
++
++	switch@10{
++		compatible = "marvell,mv88e6085";
++		#address-cells = <1>;
++		#size-cells = <0>;
++		reg = <10>;
++
++		ports {
++
++            #address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++				label = "lan1";
++			};
++
++			port@1 {
++				reg = <1>;
++				label = "lan2";
++			};
++
++			port@2 {
++				reg = <2>;
++				label = "lan3";
++			};
++
++			port@3 {
++				reg = <3>;
++				label = "lan4";
++			};
++
++			port@4 {
++				reg = <4>;
++				label = "aux";
++			};
++
++			port@5 {
++				reg = <5>;
++				label = "cpu";
++				ethernet = <&eth0port>;
++				fixed-link {
++					speed = <1000>;
++					full-duplex;
++				};
++			};
++		};
++	};
++};
++
++&pciec {
++	status = "okay";
++};
++
++&pcie0 {
++	status = "okay";
++};
++
++&eth0 {
++	status = "okay";	
++	ethernet0-port@0 {
++		speed = <1000>;
++		duplex = <1>;
++	};
++};
++
++&eth1 {
++	status = "okay";	
++	ethernet1-port@0 {
++    	phy-handle = <&ethphy1>;
++	};
++};
+diff -urN linux-4.12.8_orig/arch/arm/boot/dts/Makefile linux-4.12.8/arch/arm/boot/dts/Makefile
+--- linux-4.12.8_orig/arch/arm/boot/dts/Makefile	2017-08-17 04:47:18.000000000 +0800
++++ linux-4.12.8/arch/arm/boot/dts/Makefile	2017-08-21 19:54:39.724229791 +0800
+@@ -268,6 +268,7 @@
+ 	kirkwood-openrd-ultimate.dtb \
+ 	kirkwood-pogo_e02.dtb \
+ 	kirkwood-pogoplug-series-4.dtb \
++	kirkwood-qzt501mv2.dtb \
+ 	kirkwood-rd88f6192.dtb \
+ 	kirkwood-rd88f6281-z0.dtb \
+ 	kirkwood-rd88f6281-a.dtb \

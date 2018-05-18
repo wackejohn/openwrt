@@ -17,6 +17,10 @@ case "$board" in
 "linksys,audi")
 	ucidef_set_led_default "power" "power" "audi:green:power" "1"
 	;;
+"qizhitong,501m_v2")
+	ucidef_set_led_default "power" "power" "status:green:power" "1"
+	ucidef_set_led_ataport "hdd" "HDD" "status:orange:hdd" "1"
+	;;
 "linksys,viper")
 	ucidef_set_led_default "health" "health" "viper:white:health" "1"
 	ucidef_set_led_default "pulse" "pulse" "viper:white:pulse" "1"
