@@ -123,6 +123,14 @@ define Device/NAND-512K
   PAGESIZE := 4096
 endef
 
+define Device/NAND-1024K
+  $(Device/UBI)
+  BLOCKSIZE := 1024KiB
+  PAGESIZE := 4096
+  SUBPAGESIZE := 4096
+  VID_HDR_OFFSET := 4096
+endef
+
 include cortex-a9.mk
 include cortex-a53.mk
 include cortex-a72.mk

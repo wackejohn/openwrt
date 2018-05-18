@@ -8,6 +8,11 @@
 
 ifeq ($(SUBTARGET),cortexa9)
 
+define Device/marvell-nand-rtnasv3
+  $(Device/NAND-1024K)
+  DEVICE_TITLE := Marvell Armada $(1)
+endef
+
 define Device/linksys
   DEVICE_TITLE := Linksys $(1)
   DEVICE_PACKAGES := kmod-mwlwifi wpad-mini swconfig
@@ -104,6 +109,17 @@ define Device/armada-370-rd
 	$(call Device/marvell-nand,370 RD (RD-88F6710-A1))
 endef
 TARGET_DEVICES += armada-370-rd
+
+define Device/armada-370-rtnasv3
+  $(call Device/marvell-nand-rtnasv3,370 RTNAS V3 (RD-88F6710-A1))
+  DEVICE_DTS := armada-370-rtnasv3
+  $(Device/NAND-1024K)
+  $(Device/UBI-factory)
+  UBI_OPTS = -m 4096 -p 1024KiB -s 4096
+  UBIFS_OPTS = -m 4096 -e 1016KiB -c 990
+  KERNEL_SIZE := 4096k
+endef
+TARGET_DEVICES += armada-370-rtnasv3
 
 define Device/armada-xp-db
 	$(call Device/marvell-nand,XP DB (DB-78460-BP))

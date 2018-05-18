@@ -11,6 +11,16 @@ platform_check_image() {
 	return 0
 }
 
+platform_pre_upgrade() {
+    local board=$(board_name)
+
+    case "$board" in
+    armada-370-rtnasv3)
+        nand_do_upgrade $1
+        ;;
+    esac
+}
+
 platform_do_upgrade() {
 	case "$(board_name)" in
 	armada-385-linksys-caiman|armada-385-linksys-cobra|armada-385-linksys-rango|armada-385-linksys-shelby|armada-385-linksys-venom|armada-xp-linksys-mamba)
