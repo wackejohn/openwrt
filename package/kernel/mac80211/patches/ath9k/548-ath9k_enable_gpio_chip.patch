@@ -45,7 +45,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  #ifdef CPTCFG_ATH9K_DEBUGFS
 --- a/drivers/net/wireless/ath/ath9k/gpio.c
 +++ b/drivers/net/wireless/ath/ath9k/gpio.c
-@@ -16,13 +16,135 @@
+@@ -16,13 +16,140 @@
  
  #include "ath9k.h"
  #include <linux/ath9k_platform.h>
@@ -58,6 +58,11 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 +/***************/
 +/*  GPIO Chip  */
 +/***************/
++
++static inline int gpiochip_add(struct gpio_chip *gc)
++{
++	return gpiochip_add_data(gc, NULL);
++}
 +
 +/* gpio_chip handler : set GPIO to input */
 +static int ath9k_gpio_pin_cfg_input(struct gpio_chip *chip, unsigned offset)

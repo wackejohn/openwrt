@@ -31,10 +31,13 @@ case "$FIRMWARE" in
 	netgear,wax218|\
 	qnap,301w|\
 	redmi,ax6|\
+	redmi,ax6-stock|\
 	xiaomi,ax3600|\
+	xiaomi,ax3600-stock|\
 	xiaomi,ax9000|\
 	yuncore,ax880|\
-	zte,mf269)
+	zte,mf269|\
+	zte,mf269-stock)
 		caldata_extract "0:art" 0x1000 0x20000
 		;;
 	linksys,homewrk|\
@@ -60,6 +63,9 @@ case "$FIRMWARE" in
 		ath11k_patch_mac $(macaddr_add $label_mac 3) 2
 		ath11k_remove_regdomain
 		;;
+	oppo,cpe|\
+	elfcs,elf1|\
+	qualcomm,hk09|\
 	netgear,rax120v2)
 		caldata_extract "0:art" 0x1000 0x20000
 		ath11k_patch_mac $(mtd_get_mac_binary boarddata1 0xc) 0

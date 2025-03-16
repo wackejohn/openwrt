@@ -155,7 +155,6 @@ platform_pre_upgrade() {
 	asus,rt-ax89x)
 		asus_initial_setup
 		;;
-	redmi,ax6|\
 	xiaomi,ax3600|\
 	xiaomi,ax9000)
 		xiaomi_initramfs_prepare
@@ -174,6 +173,10 @@ platform_do_upgrade() {
 		fi
 		nand_do_upgrade "$1"
 		;;
+	elfcs,elf1|\
+	oppo,cpe|\
+	qualcomm,hk09|\
+	tplink,tl-er2260t|\
 	arcadyan,aw1000|\
 	cmcc,rm2-6|\
 	compex,wpq873|\
@@ -237,7 +240,6 @@ platform_do_upgrade() {
 		CI_ROOTPART="rootfs"
 		emmc_do_upgrade "$1"
 		;;
-	redmi,ax6|\
 	xiaomi,ax3600|\
 	xiaomi,ax9000)
 		# Make sure that UART is enabled
@@ -254,6 +256,47 @@ platform_do_upgrade() {
 		# Kernel and rootfs are placed in 2 different UBI
 		CI_KERN_UBIPART="ubi_kernel"
 		CI_ROOT_UBIPART="rootfs"
+		nand_do_upgrade "$1"
+		;;
+	redmi,ax6)
+		# Make sure that UART is enabled
+		fw_setenv boot_wait on
+		fw_setenv uart_en 1
+
+		# Enforce single partition.
+		fw_setenv flag_boot_rootfs 0
+		fw_setenv flag_last_success 0
+		fw_setenv flag_boot_success 1
+		fw_setenv flag_try_sys1_failed 8
+		fw_setenv flag_try_sys2_failed 8
+
+		nand_do_upgrade "$1"
+		;;
+	redmi,ax6-stock|\
+	xiaomi,ax3600-stock)
+		part_num="$(fw_printenv -n flag_boot_rootfs)"
+		if [ "$part_num" -eq "1" ]; then
+			CI_UBIPART="rootfs_1"
+			target_num=1
+			# Reset fail flag for the current partition
+			# With both partition set to fail, the partition 2 (bit 1)
+			# is loaded
+			fw_setenv flag_try_sys2_failed 0
+		else
+			CI_UBIPART="rootfs"
+			target_num=0
+			# Reset fail flag for the current partition
+			# or uboot will skip the loading of this partition
+			fw_setenv flag_try_sys1_failed 0
+		fi
+
+		# Tell uboot to switch partition
+		fw_setenv flag_boot_rootfs "$target_num"
+		fw_setenv flag_last_success "$target_num"
+
+		# Reset success flag
+		fw_setenv flag_boot_success 0
+
 		nand_do_upgrade "$1"
 		;;
 	spectrum,sax1v1k)
@@ -293,6 +336,10 @@ platform_do_upgrade() {
 	zte,mf269)
 		CI_KERN_UBIPART="ubi_kernel"
 		CI_ROOT_UBIPART="rootfs"
+		nand_do_upgrade "$1"
+		;;
+	zte,mf269-stock)
+		CI_UBIPART="rootfs"
 		nand_do_upgrade "$1"
 		;;
 	zyxel,nbg7815)

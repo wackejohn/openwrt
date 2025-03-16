@@ -558,6 +558,17 @@ endef
 
 $(eval $(call KernelPackage,crypto-kpp))
 
+define KernelPackage/crypto-lib-aescfb
+  TITLE:=AES cipher operations feedback mode library
+  DEPENDS:=@!LINUX_6_6
+  KCONFIG:=CONFIG_CRYPTO_LIB_AESCFB
+  FILES:=$(LINUX_DIR)/lib/crypto/libaescfb.ko
+  AUTOLOAD:=$(call AutoLoad,09,libaescfb)
+  $(call AddDepends/crypto)
+endef
+
+$(eval $(call KernelPackage,crypto-lib-aescfb))
+
 define KernelPackage/crypto-lib-chacha20
   TITLE:=ChaCha library interface
   KCONFIG:=CONFIG_CRYPTO_LIB_CHACHA
@@ -1193,7 +1204,6 @@ endef
 
 $(eval $(call KernelPackage,crypto-xts))
 
-
 define KernelPackage/crypto-xxhash
   TITLE:=xxHash non-cryptographic hash algorithm
   DEPENDS:=+kmod-crypto-hash +kmod-lib-xxhash
@@ -1205,3 +1215,20 @@ endef
 
 $(eval $(call KernelPackage,crypto-xxhash))
 
+define KernelPackage/crypto-qce
+  TITLE:=QTI Crypto Engine (QCE)
+  KCONFIG:= \
+	CONFIG_CRYPTO_DEV_QCE \
+	CONFIG_CRYPTO_DEV_QCE_AEAD=y \
+	CONFIG_CRYPTO_DEV_QCE_ENABLE_ALL=y \
+	CONFIG_CRYPTO_DEV_QCE_SHA=y \
+	CONFIG_CRYPTO_DEV_QCE_SKCIPHER=y \
+	CONFIG_CRYPTO_DEV_QCE_SW_MAX_LEN=512
+  FILES:= \
+	$(LINUX_DIR)/drivers/crypto/qce/qcrypto.ko
+  AUTOLOAD:=$(call AutoLoad,09,qcrypto)
+  DEPENDS:=@TARGET_qualcommax +kmod-crypto-manager +kmod-crypto-hash +kmod-crypto-des
+  $(call AddDepends/crypto)
+endef
+
+$(eval $(call KernelPackage,crypto-qce))

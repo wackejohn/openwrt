@@ -39,10 +39,12 @@ netgear,wax630)
 	ucidef_set_led_netdev "lan1" "LAN1" "lan1:green" "lan1"
 	ucidef_set_led_netdev "lan2" "LAN2" "lan2:green" "lan2"
 	;;
-redmi,ax6)
+redmi,ax6|\
+redmi,ax6-stock)
 	ucidef_set_led_netdev "wan" "WAN" "blue:network" "wan"
 	;;
-xiaomi,ax3600)
+xiaomi,ax3600|\
+xiaomi,ax3600-stock)
 	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:01:green:wan" "wan" "tx rx link_10 link_100 link_1000"
 	ucidef_set_led_netdev "lan1-port-link" "LAN1-PORT-LINK" "90000.mdio-1:02:green:lan" "lan1" "tx rx link_10 link_100 link_1000"
 	ucidef_set_led_netdev "lan2-port-link" "LAN2-PORT-LINK" "90000.mdio-1:03:green:lan" "lan2" "tx rx link_10 link_100 link_1000"
@@ -56,6 +58,13 @@ xiaomi,ax9000)
 	ucidef_set_led_netdev "lan3-port-link" "LAN3-PORT-LINK" "90000.mdio-1:01:green:lan" "lan3" "tx rx link_10 link_100 link_1000"
 	ucidef_set_led_netdev "lan4-port-link" "LAN4-PORT-LINK" "90000.mdio-1:00:green:lan" "lan4" "tx rx link_10 link_100 link_1000"
 	;;
+tplink,tl-er2260t)
+	ucidef_set_led_usbdev "usb" "USB" "green:usb" "1-1"
+	ucidef_set_led_netdev "sfp1-link" "SFP1 (Link)" "green:sfp1-10g" "10ge1" "link"
+	ucidef_set_led_netdev "sfp2-link" "SFP2 (Link)" "green:sfp2-10g" "10ge2" "link"
+	ucidef_set_led_netdev "sfp1-activity" "SFP1 (Activity)" "green:sfp1-act" "10ge1" "tx rx"
+	ucidef_set_led_netdev "sfp2-activity" "SFP2 (Activity)" "green:sfp2-act" "10ge2" "tx rx"
+	;;
 qnap,301w)
 	ucidef_set_led_netdev "lan1" "LAN1" "green:lan-1" "lan1"
 	ucidef_set_led_netdev "lan2" "LAN2" "green:lan-2" "lan2"
@@ -63,6 +72,14 @@ qnap,301w)
 	ucidef_set_led_netdev "lan4" "LAN4" "green:lan-4" "lan4"
 	ucidef_set_led_netdev "10G_1" "10G_1" "green:10g-1" "10g-1"
 	ucidef_set_led_netdev "10G_2" "10G_2" "green:10g-2" "10g-2"
+	;;
+qualcomm,hk09)
+	ucidef_set_led_netdev "5g" "5G" "led_5g" "wwan0"
+	ucidef_set_led_netdev "wan" "WAN" "led_wan" "wan"
+	ucidef_set_led_netdev "lan0" "LAN0" "led_lan0" "lan0"
+	ucidef_set_led_netdev "lan1" "LAN1" "led_lan1" "lan1"
+	ucidef_set_led_netdev "lan2" "LAN2" "led_lan2" "lan2"
+	ucidef_set_led_netdev "lan3" "LAN3" "led_lan3" "lan3"
 	;;
 yuncore,ax880)
 	ucidef_set_led_netdev "wan-port-link" "WAN-PORT-LINK" "90000.mdio-1:18:green:wan" "wan" "tx rx link_10 link_100 link_1000 link_2500"

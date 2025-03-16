@@ -264,7 +264,8 @@ define KernelPackage/fs-fscache
   TITLE:=General filesystem local cache manager
   DEPENDS:=+kmod-fs-netfs
   KCONFIG:=\
-	CONFIG_FSCACHE \
+	CONFIG_FSCACHE@lt6.12 \
+	CONFIG_FSCACHE=y@ge6.12 \
 	CONFIG_FSCACHE_STATS=y \
 	CONFIG_FSCACHE_HISTOGRAM=n \
 	CONFIG_FSCACHE_DEBUG=n \
@@ -275,7 +276,7 @@ define KernelPackage/fs-fscache
 	CONFIG_CACHEFILES_ERROR_INJECTION=n \
 	CONFIG_CACHEFILES_ONDEMAND=n
   FILES:= \
-	$(LINUX_DIR)/fs/fscache/fscache.ko \
+	$(LINUX_DIR)/fs/fscache/fscache.ko@lt6.12 \
 	$(LINUX_DIR)/fs/cachefiles/cachefiles.ko
   AUTOLOAD:=$(call AutoLoad,29,fscache cachefiles)
 endef
@@ -564,6 +565,7 @@ $(eval $(call KernelPackage,fs-nfsd))
 define KernelPackage/fs-ntfs
   SUBMENU:=$(FS_MENU)
   TITLE:=NTFS filesystem read-only (old driver) support
+  DEPENDS:=@LINUX_6_6
   KCONFIG:=CONFIG_NTFS_FS
   FILES:=$(LINUX_DIR)/fs/ntfs/ntfs.ko
   AUTOLOAD:=$(call AutoLoad,30,ntfs)
@@ -701,11 +703,9 @@ define KernelPackage/pstore
   TITLE:=Pstore file system
   DEFAULT:=m if ALL_KMODS
   KCONFIG:= \
-	CONFIG_PSTORE \
-	CONFIG_PSTORE_COMPRESS=y
+	CONFIG_PSTORE
   FILES:= $(LINUX_DIR)/fs/pstore/pstore.ko
   AUTOLOAD:=$(call AutoLoad,30,pstore,1)
-  DEPENDS:=+kmod-lib-zlib-deflate +kmod-lib-zlib-inflate
 endef
 
 define KernelPackage/pstore/description

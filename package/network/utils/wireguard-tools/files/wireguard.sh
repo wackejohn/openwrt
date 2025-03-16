@@ -3,8 +3,14 @@
 # Licensed to the public under the Apache License 2.0.
 
 WG=/usr/bin/wg
+SH=/usr/bin/shuf
 if [ ! -x $WG ]; then
 	logger -t "wireguard" "error: missing wireguard-tools (${WG})"
+	exit 0
+fi
+
+if [ ! -x $SH ]; then
+	logger -t "wireguard" "error: missing coreutils-shuf (${SH})"
 	exit 0
 fi
 
@@ -72,7 +78,11 @@ proto_wireguard_setup_peer() {
 				;;
 		esac
 		if [ "${endpoint_port}" ]; then
-			endpoint="${endpoint}:${endpoint_port}"
+			if [ "`echo ${endpoint_port} | grep -c '-'`" == "1" ]; then
+				endpoint="${endpoint}:`shuf -i ${endpoint_port} -n 1`"
+			else
+				endpoint="${endpoint}:${endpoint_port}"
+			fi
 		else
 			endpoint="${endpoint}:51820"
 		fi
@@ -127,6 +137,7 @@ proto_wireguard_setup() {
 	local private_key
 	local listen_port
 	local mtu
+	local flip_msb
 
 	ensure_key_is_generated "${config}"
 
@@ -136,9 +147,18 @@ proto_wireguard_setup() {
 	config_get addresses "${config}" "addresses"
 	config_get mtu "${config}" "mtu"
 	config_get fwmark "${config}" "fwmark"
+	config_get flip_msb "${config}" "flip_msb"
 	config_get ip6prefix "${config}" "ip6prefix"
+	config_get metric "${config}" "metric"
+	config_get metric6 "${config}" "metric6"
+	config_get gateway "${config}" "gateway"
+	config_get delay "${config}" "delay"
+	config_get ip6gw "${config}" "ip6gw"
+	config_get ip6subnet "${config}" "ip6subnet"
 	config_get nohostroute "${config}" "nohostroute"
+	config_get defaultroute "${config}" "defaultroute"
 	config_get tunlink "${config}" "tunlink"
+	config_get defaultip6gw "${config}" "defaultip6gw"
 
 	ip link del dev "${config}" 2>/dev/null
 	ip link add dev "${config}" type wireguard
@@ -158,6 +178,9 @@ proto_wireguard_setup() {
 	fi
 	if [ "${fwmark}" ]; then
 		echo "FwMark=${fwmark}" >> "${wg_cfg}"
+	fi
+	if [ "${flip_msb}" ]; then
+		echo "FlipMsb=${flip_msb}" >> "${wg_cfg}"
 	fi
 	config_foreach proto_wireguard_setup_peer "wireguard_${config}"
 
@@ -204,7 +227,24 @@ proto_wireguard_setup() {
 		done
 	fi
 
+	# Delay ifup the interface if delay time configured.
+	if [ "${delay}" ] && [ ! -f "/tmp/wireguard/$1_first" ]; then
+		logger -t "wireguard" "Delay up detected, delay ifup the interface..."
+		touch /tmp/wireguard/$1_first
+		sleep ${delay}
+	fi
+
 	proto_send_update "${config}"
+
+	# Add default route to main routing table.
+	if [ "${defaultroute}" != "0" ] && [ "${gateway}" != "" ] && [ "${metric}" != "" ] ; then
+		ip route add default via "${gateway}" dev "${config}" proto static metric "${metric}"
+	fi
+
+	# Add default ipv6 route to main routing table.
+	if [ "${defaultip6gw}" = "1" ] && [ "${ip6gw}" != "" ] && [ "${ip6subnet}" != "" ] && [ "${metric6}" != "" ] ; then
+		ip -6 route add default from ${ip6subnet} via "${ip6gw}" dev "${config}" proto static metric "${metric6}" pref medium
+	fi
 }
 
 proto_wireguard_teardown() {

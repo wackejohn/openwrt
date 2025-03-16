@@ -37,7 +37,8 @@ define Package/wireguard-tools
   DEPENDS:= \
 	  +!BUSYBOX_CONFIG_IP:ip \
 	  +!BUSYBOX_CONFIG_FEATURE_IP_LINK:ip \
-	  +kmod-wireguard
+	  +kmod-wireguard \
+	  +coreutils-shuf
 endef
 
 define Package/wireguard-tools/description
