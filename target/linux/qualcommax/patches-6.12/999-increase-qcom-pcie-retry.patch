@@ -1,0 +1,12 @@
+diff -uNr linux-6.12.15_orig/drivers/pci/controller/dwc/pcie-designware.h linux-6.12.15/drivers/pci/controller/dwc/pcie-designware.h
+--- linux-6.12.15_orig/drivers/pci/controller/dwc/pcie-designware.h	2025-02-18 16:34:42.000000000 +0800
++++ linux-6.12.15/drivers/pci/controller/dwc/pcie-designware.h	2025-02-28 10:38:51.463951742 +0800
+@@ -61,7 +61,7 @@
+ 	set_bit(DW_PCIE_CAP_ ## _cap, &(_pci)->caps)
+ 
+ /* Parameters for the waiting for link up routine */
+-#define LINK_WAIT_MAX_RETRIES		10
++#define LINK_WAIT_MAX_RETRIES		100
+ #define LINK_WAIT_SLEEP_MS		90
+ 
+ /* Parameters for the waiting for iATU enabled routine */

@@ -1,0 +1,42 @@
+diff -uNr linux-6.12.15_orig/drivers/net/mdio/of_mdio.c linux-6.12.15/drivers/net/mdio/of_mdio.c
+--- linux-6.12.15_orig/drivers/net/mdio/of_mdio.c	2025-02-18 16:34:42.000000000 +0800
++++ linux-6.12.15/drivers/net/mdio/of_mdio.c	2025-02-25 20:09:14.120413783 +0800
+@@ -144,15 +144,18 @@
+ {
+ 	struct device_node *child;
+ 	int addr, rc = 0;
++	int retries = 200;
+ 
+ 	/* Loop over the child nodes and register a phy_device for each phy */
+ 	for_each_available_child_of_node(np, child) {
++retry:
+ 		if (of_node_name_eq(child, "ethernet-phy-package")) {
+ 			/* Ignore invalid ethernet-phy-package node */
+ 			if (!of_property_present(child, "reg"))
+ 				continue;
+ 
+ 			rc = __of_mdiobus_parse_phys(mdio, child, NULL);
++			mdelay (500);
+ 			if (rc && rc != -ENODEV)
+ 				goto exit;
+ 
+@@ -172,10 +175,17 @@
+ 		else
+ 			rc = of_mdiobus_register_device(mdio, child, addr);
+ 
+-		if (rc == -ENODEV)
+-			dev_err(&mdio->dev,
++		if (rc == -ENODEV) {
++			if (retries != 0) {
++				retries--;
++				goto retry;
++			}
++			else {
++				dev_err(&mdio->dev,
+ 				"MDIO device at address %d is missing.\n",
+ 				addr);
++			}
++		}
+ 		else if (rc)
+ 			goto exit;
+ 	}

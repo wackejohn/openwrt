@@ -1,0 +1,287 @@
+diff -uNr wireguard-tools-1.0.20210914_orig/src/config.c wireguard-tools-1.0.20210914/src/config.c
+--- wireguard-tools-1.0.20210914_orig/src/config.c	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/config.c	2023-01-11 15:47:55.062588032 +0800
+@@ -104,6 +104,24 @@
+ 	return false;
+ }
+ 
++static inline bool parse_flip_msb(uint16_t *flip_msb, uint32_t *flags, const char *value)
++{
++	if (strcasecmp(value, "0") == 0) {
++		*flip_msb = 0;
++		*flags |= WGDEVICE_HAS_FLIP_MSB;
++		return true;
++	}
++	else if (strcasecmp(value, "1") == 0) {
++		*flip_msb = 1;
++		*flags |= WGDEVICE_HAS_FLIP_MSB;
++		return true;
++	}
++	else {
++		fprintf(stderr, "FlipMsb is neither 0 nor 1 : `%s'\n", value);
++		return false;
++	}
++}
++
+ static inline bool parse_key(uint8_t key[static WG_KEY_LEN], const char *value)
+ {
+ 	if (!key_from_base64(key, value)) {
+@@ -446,6 +464,8 @@
+ 			ret = parse_port(&ctx->device->listen_port, &ctx->device->flags, value);
+ 		else if (key_match("FwMark"))
+ 			ret = parse_fwmark(&ctx->device->fwmark, &ctx->device->flags, value);
++		else if (key_match("FlipMsb"))
++			ret = parse_flip_msb(&ctx->device->flip_msb, &ctx->device->flags, value);
+ 		else if (key_match("PrivateKey")) {
+ 			ret = parse_key(ctx->device->private_key, value);
+ 			if (ret)
+@@ -582,6 +602,11 @@
+ 				goto error;
+ 			argv += 2;
+ 			argc -= 2;
++		} else if (!strcmp(argv[0], "flip_msb") && argc >= 2 && !peer) {
++			if (!parse_flip_msb(&device->flip_msb, &device->flags, argv[1]))
++				goto error;
++			argv += 2;
++			argc -= 2;
+ 		} else if (!strcmp(argv[0], "private-key") && argc >= 2 && !peer) {
+ 			if (!parse_keyfile(device->private_key, argv[1]))
+ 				goto error;
+diff -uNr wireguard-tools-1.0.20210914_orig/src/containers.h wireguard-tools-1.0.20210914/src/containers.h
+--- wireguard-tools-1.0.20210914_orig/src/containers.h	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/containers.h	2023-01-14 14:50:33.000000000 +0800
+@@ -43,7 +43,8 @@
+ 	WGPEER_REPLACE_ALLOWEDIPS = 1U << 1,
+ 	WGPEER_HAS_PUBLIC_KEY = 1U << 2,
+ 	WGPEER_HAS_PRESHARED_KEY = 1U << 3,
+-	WGPEER_HAS_PERSISTENT_KEEPALIVE_INTERVAL = 1U << 4
++	WGPEER_HAS_PERSISTENT_KEEPALIVE_INTERVAL = 1U << 4,
++	WGPEER_HAS_FLIP_MSB = 1U << 5
+ };
+ 
+ struct wgpeer {
+@@ -61,6 +62,7 @@
+ 	struct timespec64 last_handshake_time;
+ 	uint64_t rx_bytes, tx_bytes;
+ 	uint16_t persistent_keepalive_interval;
++	uint16_t flip_msb;
+ 
+ 	struct wgallowedip *first_allowedip, *last_allowedip;
+ 	struct wgpeer *next_peer;
+@@ -71,7 +73,8 @@
+ 	WGDEVICE_HAS_PRIVATE_KEY = 1U << 1,
+ 	WGDEVICE_HAS_PUBLIC_KEY = 1U << 2,
+ 	WGDEVICE_HAS_LISTEN_PORT = 1U << 3,
+-	WGDEVICE_HAS_FWMARK = 1U << 4
++	WGDEVICE_HAS_FWMARK = 1U << 4,
++	WGDEVICE_HAS_FLIP_MSB = 1U << 5
+ };
+ 
+ struct wgdevice {
+@@ -85,6 +88,8 @@
+ 
+ 	uint32_t fwmark;
+ 	uint16_t listen_port;
++    
++	uint16_t flip_msb;
+ 
+ 	struct wgpeer *first_peer, *last_peer;
+ };
+diff -uNr wireguard-tools-1.0.20210914_orig/src/ipc-linux.h wireguard-tools-1.0.20210914/src/ipc-linux.h
+--- wireguard-tools-1.0.20210914_orig/src/ipc-linux.h	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/ipc-linux.h	2023-01-17 12:47:15.141875945 +0800
+@@ -165,6 +165,8 @@
+ 			mnl_attr_put_u16(nlh, WGDEVICE_A_LISTEN_PORT, dev->listen_port);
+ 		if (dev->flags & WGDEVICE_HAS_FWMARK)
+ 			mnl_attr_put_u32(nlh, WGDEVICE_A_FWMARK, dev->fwmark);
++		if (dev->flags & WGDEVICE_HAS_FLIP_MSB)
++			mnl_attr_put_u16(nlh, WGDEVICE_A_FLIP_MSB, dev->flip_msb);
+ 		if (dev->flags & WGDEVICE_REPLACE_PEERS)
+ 			flags |= WGDEVICE_F_REPLACE_PEERS;
+ 		if (flags)
+@@ -439,6 +441,10 @@
+ 		if (!mnl_attr_validate(attr, MNL_TYPE_U32))
+ 			device->fwmark = mnl_attr_get_u32(attr);
+ 		break;
++	case WGDEVICE_A_FLIP_MSB:
++		if (!mnl_attr_validate(attr, MNL_TYPE_U16))
++			device->flip_msb = mnl_attr_get_u16(attr);
++		break;
+ 	case WGDEVICE_A_PEERS:
+ 		return mnl_attr_parse_nested(attr, parse_peers, device);
+ 	}
+diff -uNr wireguard-tools-1.0.20210914_orig/src/Makefile wireguard-tools-1.0.20210914/src/Makefile
+--- wireguard-tools-1.0.20210914_orig/src/Makefile	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/Makefile	2023-01-11 15:41:00.981441467 +0800
+@@ -39,7 +39,7 @@
+ 
+ CFLAGS ?= -O3
+ ifneq ($(wildcard uapi/$(PLATFORM)/.),)
+-CFLAGS += -idirafter uapi/$(PLATFORM)
++CFLAGS += -Iuapi/$(PLATFORM)
+ endif
+ CFLAGS += -std=gnu99 -D_GNU_SOURCE
+ CFLAGS += -Wall -Wextra
+diff -uNr wireguard-tools-1.0.20210914_orig/src/man/wg.8 wireguard-tools-1.0.20210914/src/man/wg.8
+--- wireguard-tools-1.0.20210914_orig/src/man/wg.8	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/man/wg.8	2023-01-11 15:41:00.981441467 +0800
+@@ -36,7 +36,7 @@
+ .SH COMMANDS
+ 
+ .TP
+-\fBshow\fP { \fI<interface>\fP | \fIall\fP | \fIinterfaces\fP } [\fIpublic-key\fP | \fIprivate-key\fP | \fIlisten-port\fP | \fIfwmark\fP | \fIpeers\fP | \fIpreshared-keys\fP | \fIendpoints\fP | \fIallowed-ips\fP | \fIlatest-handshakes\fP | \fIpersistent-keepalive\fP | \fItransfer\fP | \fIdump\fP]
++\fBshow\fP { \fI<interface>\fP | \fIall\fP | \fIinterfaces\fP } [\fIpublic-key\fP | \fIprivate-key\fP | \fIlisten-port\fP | \fIfwmark\fP | \fIsavemark\fP | \fIpeers\fP | \fIpreshared-keys\fP | \fIendpoints\fP | \fIallowed-ips\fP | \fIlatest-handshakes\fP | \fIpersistent-keepalive\fP | \fItransfer\fP | \fIdump\fP]
+ Shows current WireGuard configuration and runtime information of specified \fI<interface>\fP.
+ If no \fI<interface>\fP is specified, \fI<interface>\fP defaults to \fIall\fP.
+ If \fIinterfaces\fP is specified, prints a list of all WireGuard interfaces,
+@@ -55,7 +55,7 @@
+ Shows the current configuration of \fI<interface>\fP in the format described
+ by \fICONFIGURATION FILE FORMAT\fP below.
+ .TP
+-\fBset\fP \fI<interface>\fP [\fIlisten-port\fP \fI<port>\fP] [\fIfwmark\fP \fI<fwmark>\fP] [\fIprivate-key\fP \fI<file-path>\fP] [\fIpeer\fP \fI<base64-public-key>\fP [\fIremove\fP] [\fIpreshared-key\fP \fI<file-path>\fP] [\fIendpoint\fP \fI<ip>:<port>\fP] [\fIpersistent-keepalive\fP \fI<interval seconds>\fP] [\fIallowed-ips\fP \fI<ip1>/<cidr1>\fP[,\fI<ip2>/<cidr2>\fP]...] ]...
++\fBset\fP \fI<interface>\fP [\fIlisten-port\fP \fI<port>\fP] [\fIfwmark\fP \fI<fwmark>\fP] [\fIsavemark\fP \fI<on off>\fP] [\fIprivate-key\fP \fI<file-path>\fP] [\fIpeer\fP \fI<base64-public-key>\fP [\fIremove\fP] [\fIpreshared-key\fP \fI<file-path>\fP] [\fIendpoint\fP \fI<ip>:<port>\fP] [\fIpersistent-keepalive\fP \fI<interval seconds>\fP] [\fIallowed-ips\fP \fI<ip1>/<cidr1>\fP[,\fI<ip2>/<cidr2>\fP]...] ]...
+ Sets configuration values for the specified \fI<interface>\fP. Multiple
+ \fIpeer\fPs may be specified, and if the \fIremove\fP argument is given
+ for a peer, that peer is removed, not configured. If \fIlisten-port\fP
+@@ -140,6 +140,9 @@
+ FwMark \(em a 32-bit fwmark for outgoing packets. If set to 0 or "off", this
+ option is disabled. May be specified in hexadecimal by prepending "0x". Optional.
+ .P
++SaveMark \(em a switch for controll outgoing source ip based on fwmark. If set to 0, this
++option is disabled. Optional.
++.P
+ The \fIPeer\fP sections may contain the following fields:
+ .IP \(bu
+ PublicKey \(em a base64 public key calculated by \fIwg pubkey\fP from a
+diff -uNr wireguard-tools-1.0.20210914_orig/src/set.c wireguard-tools-1.0.20210914/src/set.c
+--- wireguard-tools-1.0.20210914_orig/src/set.c	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/set.c	2023-01-11 15:58:42.247043191 +0800
+@@ -18,7 +18,7 @@
+ 	int ret = 1;
+ 
+ 	if (argc < 3) {
+-		fprintf(stderr, "Usage: %s %s <interface> [listen-port <port>] [fwmark <mark>] [private-key <file path>] [peer <base64 public key> [remove] [preshared-key <file path>] [endpoint <ip>:<port>] [persistent-keepalive <interval seconds>] [allowed-ips <ip1>/<cidr1>[,<ip2>/<cidr2>]...] ]...\n", PROG_NAME, argv[0]);
++		fprintf(stderr, "Usage: %s %s <interface> [listen-port <port>] [fwmark <mark>] [flip_msb <on off>] [private-key <file path>] [peer <base64 public key> [remove] [preshared-key <file path>] [endpoint <ip>:<port>] [persistent-keepalive <interval seconds>] [allowed-ips <ip1>/<cidr1>[,<ip2>/<cidr2>]...] ]...\n", PROG_NAME, argv[0]);
+ 		return 1;
+ 	}
+ 
+diff -uNr wireguard-tools-1.0.20210914_orig/src/show.c wireguard-tools-1.0.20210914/src/show.c
+--- wireguard-tools-1.0.20210914_orig/src/show.c	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/show.c	2023-01-14 14:51:01.000000000 +0800
+@@ -202,7 +202,7 @@
+ static const char *COMMAND_NAME;
+ static void show_usage(void)
+ {
+-	fprintf(stderr, "Usage: %s %s { <interface> | all | interfaces } [public-key | private-key | listen-port | fwmark | peers | preshared-keys | endpoints | allowed-ips | latest-handshakes | transfer | persistent-keepalive | dump]\n", PROG_NAME, COMMAND_NAME);
++	fprintf(stderr, "Usage: %s %s { <interface> | all | interfaces } [public-key | private-key | listen-port | fwmark | flip_msb | peers | preshared-keys | endpoints | allowed-ips | latest-handshakes | transfer | persistent-keepalive | dump]\n", PROG_NAME, COMMAND_NAME);
+ }
+ 
+ static void pretty_print(struct wgdevice *device)
+@@ -220,6 +220,8 @@
+ 		terminal_printf("  " TERMINAL_BOLD "listening port" TERMINAL_RESET ": %u\n", device->listen_port);
+ 	if (device->fwmark)
+ 		terminal_printf("  " TERMINAL_BOLD "fwmark" TERMINAL_RESET ": 0x%x\n", device->fwmark);
++	if (device->flip_msb)
++		terminal_printf("  " TERMINAL_BOLD "flip_msb" TERMINAL_RESET ": on\n");
+ 	if (device->first_peer) {
+ 		sort_peers(device);
+ 		terminal_printf("\n");
+@@ -243,6 +245,8 @@
+ 			terminal_printf("%s received, ", bytes(peer->rx_bytes));
+ 			terminal_printf("%s sent\n", bytes(peer->tx_bytes));
+ 		}
++		if (peer->flip_msb)
++			terminal_printf("  " TERMINAL_BOLD "flip_msb" TERMINAL_RESET ": on\n");
+ 		if (peer->persistent_keepalive_interval)
+ 			terminal_printf("  " TERMINAL_BOLD "persistent keepalive" TERMINAL_RESET ": %s\n", every(peer->persistent_keepalive_interval));
+ 		if (peer->next_peer)
+@@ -261,7 +265,11 @@
+ 	printf("%s\t", maybe_key(device->public_key, device->flags & WGDEVICE_HAS_PUBLIC_KEY));
+ 	printf("%u\t", device->listen_port);
+ 	if (device->fwmark)
+-		printf("0x%x\n", device->fwmark);
++		printf("0x%x\t", device->fwmark);
++	else
++		printf("off\t");
++	if (device->flip_msb)
++		printf("on\n");
+ 	else
+ 		printf("off\n");
+ 	for_each_wgpeer(device, peer) {
+@@ -311,6 +319,13 @@
+ 			printf("0x%x\n", device->fwmark);
+ 		else
+ 			printf("off\n");
++	} else if (!strcmp(param, "flip_msb")) {
++		if (with_interface)
++			printf("%s\t", device->name);
++		if (device->flip_msb)
++			printf("on\n");
++		else
++			printf("off\n");
+ 	} else if (!strcmp(param, "endpoints")) {
+ 		if (with_interface)
+ 			printf("%s\t", device->name);
+diff -uNr wireguard-tools-1.0.20210914_orig/src/showconf.c wireguard-tools-1.0.20210914/src/showconf.c
+--- wireguard-tools-1.0.20210914_orig/src/showconf.c	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/showconf.c	2023-01-11 15:57:47.239046803 +0800
+@@ -42,6 +42,8 @@
+ 		printf("ListenPort = %u\n", device->listen_port);
+ 	if (device->fwmark)
+ 		printf("FwMark = 0x%x\n", device->fwmark);
++	if (device->flip_msb)
++		printf("FlipMsb = on\n");
+ 	if (device->flags & WGDEVICE_HAS_PRIVATE_KEY) {
+ 		key_to_base64(base64, device->private_key);
+ 		printf("PrivateKey = %s\n", base64);
+diff -uNr wireguard-tools-1.0.20210914_orig/src/uapi/linux/linux/wireguard.h wireguard-tools-1.0.20210914/src/uapi/linux/linux/wireguard.h
+--- wireguard-tools-1.0.20210914_orig/src/uapi/linux/linux/wireguard.h	2021-09-14 06:43:31.000000000 +0800
++++ wireguard-tools-1.0.20210914/src/uapi/linux/linux/wireguard.h	2023-01-13 20:22:11.000000000 +0800
+@@ -30,6 +30,7 @@
+  *    WGDEVICE_A_LISTEN_PORT: NLA_U16
+  *    WGDEVICE_A_FWMARK: NLA_U32
+  *    WGDEVICE_A_PEERS: NLA_NESTED
++ *    WGDEVICE_A_FLIP_MSB: NLA_U16
+  *        0: NLA_NESTED
+  *            WGPEER_A_PUBLIC_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
+  *            WGPEER_A_PRESHARED_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
+@@ -49,6 +50,7 @@
+  *                    ...
+  *                ...
+  *            WGPEER_A_PROTOCOL_VERSION: NLA_U32
++ *            WGPEER_A_FLIP_MSB: NLA_U16
+  *        0: NLA_NESTED
+  *            ...
+  *        ...
+@@ -84,6 +86,7 @@
+  *    WGDEVICE_A_LISTEN_PORT: NLA_U16, 0 to choose randomly
+  *    WGDEVICE_A_FWMARK: NLA_U32, 0 to disable
+  *    WGDEVICE_A_PEERS: NLA_NESTED
++ *    WGDEVICE_A_FLIP_MSB: NLA_U16, 0 to disable
+  *        0: NLA_NESTED
+  *            WGPEER_A_PUBLIC_KEY: len WG_KEY_LEN
+  *            WGPEER_A_FLAGS: NLA_U32, 0 and/or WGPEER_F_REMOVE_ME if the
+@@ -111,6 +114,7 @@
+  *                                       most recent protocol will be used when
+  *                                       this is unset. Otherwise, must be set
+  *                                       to 1.
++ *            WGPEER_A_FLIP_MSB: NLA_U16
+  *        0: NLA_NESTED
+  *            ...
+  *        ...
+@@ -157,6 +161,7 @@
+ 	WGDEVICE_A_LISTEN_PORT,
+ 	WGDEVICE_A_FWMARK,
+ 	WGDEVICE_A_PEERS,
++	WGDEVICE_A_FLIP_MSB,
+ 	__WGDEVICE_A_LAST
+ };
+ #define WGDEVICE_A_MAX (__WGDEVICE_A_LAST - 1)
+@@ -180,6 +185,7 @@
+ 	WGPEER_A_TX_BYTES,
+ 	WGPEER_A_ALLOWEDIPS,
+ 	WGPEER_A_PROTOCOL_VERSION,
++	WGPEER_A_FLIP_MSB,
+ 	__WGPEER_A_LAST
+ };
+ #define WGPEER_A_MAX (__WGPEER_A_LAST - 1)

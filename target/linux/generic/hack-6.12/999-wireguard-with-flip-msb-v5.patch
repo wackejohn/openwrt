@@ -1,0 +1,442 @@
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/cookie.c linux-6.1.3/drivers/net/wireguard/cookie.c
+--- linux-6.1.3_orig/drivers/net/wireguard/cookie.c	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/cookie.c	2023-01-17 13:59:30.000000000 +0800
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ 
+ #include "cookie.h"
+@@ -9,6 +10,7 @@
+ #include "messages.h"
+ #include "ratelimiter.h"
+ #include "timers.h"
++#include "queueing.h"
+ 
+ #include <crypto/blake2s.h>
+ #include <crypto/chacha20poly1305.h>
+@@ -185,7 +187,12 @@
+ 		((u8 *)skb->data + skb->len - sizeof(*macs));
+ 	u8 cookie[COOKIE_LEN];
+ 
+-	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE);
++    if (PACKET_PEER(skb)->flip_msb)
++      dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE |
++                                     MESSAGE_FLIP_CONSTANT);
++    else
++      dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE);
++
+ 	dst->receiver_index = index;
+ 	get_random_bytes_wait(dst->nonce, COOKIE_NONCE_LEN);
+ 
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/device.h linux-6.1.3/drivers/net/wireguard/device.h
+--- linux-6.1.3_orig/drivers/net/wireguard/device.h	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/device.h	2023-01-12 20:14:37.376241848 +0800
+@@ -54,6 +54,7 @@
+ 	unsigned int num_peers, device_update_gen;
+ 	u32 fwmark;
+ 	u16 incoming_port;
++	u16 flip_msb;
+ };
+ 
+ int wg_device_init(void);
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/messages.h linux-6.1.3/drivers/net/wireguard/messages.h
+--- linux-6.1.3_orig/drivers/net/wireguard/messages.h	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/messages.h	2023-01-11 08:24:35.152155764 +0800
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0 */
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ 
+ #ifndef _WG_MESSAGES_H
+@@ -58,9 +59,13 @@
+ 	MESSAGE_HANDSHAKE_INITIATION = 1,
+ 	MESSAGE_HANDSHAKE_RESPONSE = 2,
+ 	MESSAGE_HANDSHAKE_COOKIE = 3,
+-	MESSAGE_DATA = 4
++	MESSAGE_DATA = 4,
++	MESSAGE_FLIP8 = 8
+ };
+ 
++/* Constant used by WIREGUARD_FLIP_MSB */
++#define MESSAGE_FLIP_CONSTANT MESSAGE_FLIP8
++
+ struct message_header {
+ 	/* The actual layout of this that we want is:
+ 	 * u8 type
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/netlink.c linux-6.1.3/drivers/net/wireguard/netlink.c
+--- linux-6.1.3_orig/drivers/net/wireguard/netlink.c	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/netlink.c	2023-01-17 14:01:17.000000000 +0800
+@@ -27,7 +27,8 @@
+ 	[WGDEVICE_A_FLAGS]		= { .type = NLA_U32 },
+ 	[WGDEVICE_A_LISTEN_PORT]	= { .type = NLA_U16 },
+ 	[WGDEVICE_A_FWMARK]		= { .type = NLA_U32 },
+-	[WGDEVICE_A_PEERS]		= { .type = NLA_NESTED }
++	[WGDEVICE_A_PEERS]		= { .type = NLA_NESTED },
++	[WGDEVICE_A_FLIP_MSB]		= { .type = NLA_U16 },
+ };
+ 
+ static const struct nla_policy peer_policy[WGPEER_A_MAX + 1] = {
+@@ -40,7 +41,8 @@
+ 	[WGPEER_A_RX_BYTES]				= { .type = NLA_U64 },
+ 	[WGPEER_A_TX_BYTES]				= { .type = NLA_U64 },
+ 	[WGPEER_A_ALLOWEDIPS]				= { .type = NLA_NESTED },
+-	[WGPEER_A_PROTOCOL_VERSION]			= { .type = NLA_U32 }
++	[WGPEER_A_PROTOCOL_VERSION]			= { .type = NLA_U32 },
++	[WGPEER_A_FLIP_MSB]			= { .type = NLA_U16 },
+ };
+ 
+ static const struct nla_policy allowedip_policy[WGALLOWEDIP_A_MAX + 1] = {
+@@ -233,6 +235,7 @@
+ 				wg->incoming_port) ||
+ 		    nla_put_u32(skb, WGDEVICE_A_FWMARK, wg->fwmark) ||
+ 		    nla_put_u32(skb, WGDEVICE_A_IFINDEX, wg->dev->ifindex) ||
++		    nla_put_u16(skb, WGDEVICE_A_FLIP_MSB, wg->flip_msb) ||
+ 		    nla_put_string(skb, WGDEVICE_A_IFNAME, wg->dev->name))
+ 			goto out;
+ 
+@@ -540,6 +543,10 @@
+ 	if (flags & WGDEVICE_F_REPLACE_PEERS)
+ 		wg_peer_remove_all(wg);
+ 
++	if (info->attrs[WGDEVICE_A_FLIP_MSB]) {
++		wg->flip_msb = nla_get_u16(info->attrs[WGDEVICE_A_FLIP_MSB]);
++	}
++
+ 	if (info->attrs[WGDEVICE_A_PRIVATE_KEY] &&
+ 	    nla_len(info->attrs[WGDEVICE_A_PRIVATE_KEY]) ==
+ 		    NOISE_PUBLIC_KEY_LEN) {
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/noise.c linux-6.1.3/drivers/net/wireguard/noise.c
+--- linux-6.1.3_orig/drivers/net/wireguard/noise.c	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/noise.c	2023-01-13 08:04:54.000000000 +0800
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ 
+ #include "noise.h"
+@@ -515,12 +516,13 @@
+ 
+ bool
+ wg_noise_handshake_create_initiation(struct message_handshake_initiation *dst,
+-				     struct noise_handshake *handshake)
++				     struct noise_handshake *handshake, struct wg_device *wg)
+ {
+ 	u8 timestamp[NOISE_TIMESTAMP_LEN];
+ 	u8 key[NOISE_SYMMETRIC_KEY_LEN];
+ 	bool ret = false;
+ 
++
+ 	/* We need to wait for crng _before_ taking any locks, since
+ 	 * curve25519_generate_secret uses get_random_bytes_wait.
+ 	 */
+@@ -532,7 +534,11 @@
+ 	if (unlikely(!handshake->static_identity->has_identity))
+ 		goto out;
+ 
+-	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION);
++	if (wg->flip_msb)
++		dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION |
++                                             MESSAGE_FLIP_CONSTANT);
++	else
++		dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION);
+ 
+ 	handshake_init(handshake->chaining_key, handshake->hash,
+ 		       handshake->remote_static);
+@@ -665,7 +671,8 @@
+ }
+ 
+ bool wg_noise_handshake_create_response(struct message_handshake_response *dst,
+-					struct noise_handshake *handshake)
++                                        struct noise_handshake *handshake,
++                                        bool is_blocked)
+ {
+ 	u8 key[NOISE_SYMMETRIC_KEY_LEN];
+ 	bool ret = false;
+@@ -681,7 +688,12 @@
+ 	if (handshake->state != HANDSHAKE_CONSUMED_INITIATION)
+ 		goto out;
+ 
+-	dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE);
++	if (is_blocked)
++		dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE |
++                                     MESSAGE_FLIP_CONSTANT);
++	else
++		dst->header.type = cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE);
++
+ 	dst->receiver_index = handshake->remote_index;
+ 
+ 	/* e */
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/noise.h linux-6.1.3/drivers/net/wireguard/noise.h
+--- linux-6.1.3_orig/drivers/net/wireguard/noise.h	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/noise.h	2023-01-17 14:01:36.000000000 +0800
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0 */
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ #ifndef _WG_NOISE_H
+ #define _WG_NOISE_H
+@@ -118,13 +119,14 @@
+ 
+ bool
+ wg_noise_handshake_create_initiation(struct message_handshake_initiation *dst,
+-				     struct noise_handshake *handshake);
++				     struct noise_handshake *handshake, struct wg_device *wg);
+ struct wg_peer *
+ wg_noise_handshake_consume_initiation(struct message_handshake_initiation *src,
+ 				      struct wg_device *wg);
+ 
+ bool wg_noise_handshake_create_response(struct message_handshake_response *dst,
+-					struct noise_handshake *handshake);
++					struct noise_handshake *handshake,
++					bool flip_msb);
+ struct wg_peer *
+ wg_noise_handshake_consume_response(struct message_handshake_response *src,
+ 				    struct wg_device *wg);
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/peer.c linux-6.1.3/drivers/net/wireguard/peer.c
+--- linux-6.1.3_orig/drivers/net/wireguard/peer.c	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/peer.c	2023-01-17 15:47:02.000000000 +0800
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ 
+ #include "peer.h"
+@@ -60,6 +61,7 @@
+ 	INIT_LIST_HEAD(&peer->allowedips_list);
+ 	wg_pubkey_hashtable_add(wg->peer_hashtable, peer);
+ 	++wg->num_peers;
++	peer->flip_msb = false;  // unblocked by default
+ 	pr_debug("%s: Peer %llu created\n", wg->dev->name, peer->internal_id);
+ 	return peer;
+ 
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/peer.h linux-6.1.3/drivers/net/wireguard/peer.h
+--- linux-6.1.3_orig/drivers/net/wireguard/peer.h	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/peer.h	2023-01-17 14:02:12.000000000 +0800
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0 */
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ 
+ #ifndef _WG_PEER_H
+@@ -64,6 +65,7 @@
+ 	struct list_head allowedips_list;
+ 	struct napi_struct napi;
+ 	u64 internal_id;
++	bool flip_msb;
+ };
+ 
+ struct wg_peer *wg_peer_create(struct wg_device *wg,
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/receive.c linux-6.1.3/drivers/net/wireguard/receive.c
+--- linux-6.1.3_orig/drivers/net/wireguard/receive.c	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/receive.c	2023-01-17 14:02:28.000000000 +0800
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ 
+ #include "queueing.h"
+@@ -29,16 +30,24 @@
+ {
+ 	if (unlikely(skb->len < sizeof(struct message_header)))
+ 		return 0;
+-	if (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_DATA) &&
++	if (((SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_DATA)) ||
++         (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_DATA |
++                                            MESSAGE_FLIP_CONSTANT))) &&
+ 	    skb->len >= MESSAGE_MINIMUM_LENGTH)
+ 		return sizeof(struct message_data);
+-	if (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION) &&
++	if (((SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION)) ||
++         (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION |
++                                            MESSAGE_FLIP_CONSTANT))) &&
+ 	    skb->len == sizeof(struct message_handshake_initiation))
+ 		return sizeof(struct message_handshake_initiation);
+-	if (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE) &&
++	if (((SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE)) ||
++         (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE |
++                                            MESSAGE_FLIP_CONSTANT))) &&
+ 	    skb->len == sizeof(struct message_handshake_response))
+ 		return sizeof(struct message_handshake_response);
+-	if (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE) &&
++	if (((SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE)) ||
++         (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE |
++                                            MESSAGE_FLIP_CONSTANT))) &&
+ 	    skb->len == sizeof(struct message_handshake_cookie))
+ 		return sizeof(struct message_handshake_cookie);
+ 	return 0;
+@@ -101,7 +110,9 @@
+ 	bool packet_needs_cookie;
+ 	bool under_load;
+ 
+-	if (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE)) {
++	if ((SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE)) ||
++        (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE |
++                                           MESSAGE_FLIP_CONSTANT))) {
+ 		net_dbg_skb_ratelimited("%s: Receiving cookie response from %pISpfsc\n",
+ 					wg->dev->name, skb);
+ 		wg_cookie_message_consume(
+@@ -132,6 +143,7 @@
+ 	}
+ 
+ 	switch (SKB_TYPE_LE32(skb)) {
++	case cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION | MESSAGE_FLIP_CONSTANT):
+ 	case cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION): {
+ 		struct message_handshake_initiation *message =
+ 			(struct message_handshake_initiation *)skb->data;
+@@ -151,9 +163,14 @@
+ 		net_dbg_ratelimited("%s: Receiving handshake initiation from peer %llu (%pISpfsc)\n",
+ 				    wg->dev->name, peer->internal_id,
+ 				    &peer->endpoint.addr);
++		if (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION |
++                                              MESSAGE_FLIP_CONSTANT)) {
++		  peer->flip_msb = true;
++		}
+ 		wg_packet_send_handshake_response(peer);
+ 		break;
+ 	}
++    case cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE | MESSAGE_FLIP_CONSTANT):
+ 	case cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE): {
+ 		struct message_handshake_response *message =
+ 			(struct message_handshake_response *)skb->data;
+@@ -544,8 +561,11 @@
+ 	if (unlikely(prepare_skb_header(skb, wg) < 0))
+ 		goto err;
+ 	switch (SKB_TYPE_LE32(skb)) {
++	case cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION | MESSAGE_FLIP_CONSTANT):
+ 	case cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION):
+ 	case cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE):
++	case cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE | MESSAGE_FLIP_CONSTANT):
++	case cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE | MESSAGE_FLIP_CONSTANT):
+ 	case cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE): {
+ 		int cpu, ret = -EBUSY;
+ 
+@@ -571,6 +591,7 @@
+ 			      &per_cpu_ptr(wg->handshake_queue.worker, cpu)->work);
+ 		break;
+ 	}
++	case cpu_to_le32(MESSAGE_DATA | MESSAGE_FLIP_CONSTANT):
+ 	case cpu_to_le32(MESSAGE_DATA):
+ 		PACKET_CB(skb)->ds = ip_tunnel_get_dsfield(ip_hdr(skb), skb);
+ 		wg_packet_consume_data(wg, skb);
+diff -uNr linux-6.1.3_orig/drivers/net/wireguard/send.c linux-6.1.3/drivers/net/wireguard/send.c
+--- linux-6.1.3_orig/drivers/net/wireguard/send.c	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/drivers/net/wireguard/send.c	2023-01-17 16:14:17.000000000 +0800
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+  * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
++ * Copyright (C) 2022 Metin Evrim Ulu <evrim@core.gen.tr>. All Rights Reserved.
+  */
+ 
+ #include "queueing.h"
+@@ -31,7 +32,7 @@
+ 			    peer->device->dev->name, peer->internal_id,
+ 			    &peer->endpoint.addr);
+ 
+-	if (wg_noise_handshake_create_initiation(&packet, &peer->handshake)) {
++	if (wg_noise_handshake_create_initiation(&packet, &peer->handshake, peer->device)) {
+ 		wg_cookie_add_mac_to_packet(&packet, sizeof(packet), peer);
+ 		wg_timers_any_authenticated_packet_traversal(peer);
+ 		wg_timers_any_authenticated_packet_sent(peer);
+@@ -91,7 +92,7 @@
+ 			    peer->device->dev->name, peer->internal_id,
+ 			    &peer->endpoint.addr);
+ 
+-	if (wg_noise_handshake_create_response(&packet, &peer->handshake)) {
++	if (wg_noise_handshake_create_response(&packet, &peer->handshake, peer->flip_msb)) {
+ 		wg_cookie_add_mac_to_packet(&packet, sizeof(packet), peer);
+ 		if (wg_noise_handshake_begin_session(&peer->handshake,
+ 						     &peer->keypairs)) {
+@@ -166,6 +167,7 @@
+ 	struct message_data *header;
+ 	struct sk_buff *trailer;
+ 	int num_frags;
++	struct wg_peer *peer = keypair->entry.peer;
+ 
+ 	/* Force hash calculation before encryption so that flow analysis is
+ 	 * consistent over the inner packet.
+@@ -203,7 +205,17 @@
+ 	 */
+ 	skb_set_inner_network_header(skb, 0);
+ 	header = (struct message_data *)skb_push(skb, sizeof(*header));
+-	header->header.type = cpu_to_le32(MESSAGE_DATA);
++
++	if (!peer && peer->device->flip_msb) {
++		header->header.type = cpu_to_le32(MESSAGE_DATA | MESSAGE_FLIP_CONSTANT);
++	}
++	else {
++		if (peer && peer->flip_msb)
++			header->header.type = cpu_to_le32(MESSAGE_DATA | MESSAGE_FLIP_CONSTANT);
++		else
++			header->header.type = cpu_to_le32(MESSAGE_DATA);
++	}
++
+ 	header->key_idx = keypair->remote_index;
+ 	header->counter = cpu_to_le64(PACKET_CB(skb)->nonce);
+ 	pskb_put(skb, trailer, trailer_len);
+diff -uNr linux-6.1.3_orig/include/uapi/linux/wireguard.h linux-6.1.3/include/uapi/linux/wireguard.h
+--- linux-6.1.3_orig/include/uapi/linux/wireguard.h	2023-01-04 18:29:02.000000000 +0800
++++ linux-6.1.3/include/uapi/linux/wireguard.h	2023-01-13 20:19:40.849996201 +0800
+@@ -30,6 +30,7 @@
+  *    WGDEVICE_A_LISTEN_PORT: NLA_U16
+  *    WGDEVICE_A_FWMARK: NLA_U32
+  *    WGDEVICE_A_PEERS: NLA_NESTED
++ *    WGDEVICE_A__FLIP_MSB: NLA_U16, 0 to disable
+  *        0: NLA_NESTED
+  *            WGPEER_A_PUBLIC_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
+  *            WGPEER_A_PRESHARED_KEY: NLA_EXACT_LEN, len WG_KEY_LEN
+@@ -49,6 +50,7 @@
+  *                    ...
+  *                ...
+  *            WGPEER_A_PROTOCOL_VERSION: NLA_U32
++ *            WGPEER_A_FLIP_MSB: NLA_U16
+  *        0: NLA_NESTED
+  *            ...
+  *        ...
+@@ -84,6 +86,7 @@
+  *    WGDEVICE_A_LISTEN_PORT: NLA_U16, 0 to choose randomly
+  *    WGDEVICE_A_FWMARK: NLA_U32, 0 to disable
+  *    WGDEVICE_A_PEERS: NLA_NESTED
++ *    WGDEVICE_A__FLIP_MSB: NLA_U16, 0 to disable
+  *        0: NLA_NESTED
+  *            WGPEER_A_PUBLIC_KEY: len WG_KEY_LEN
+  *            WGPEER_A_FLAGS: NLA_U32, 0 and/or WGPEER_F_REMOVE_ME if the
+@@ -111,6 +114,7 @@
+  *                                       most recent protocol will be used when
+  *                                       this is unset. Otherwise, must be set
+  *                                       to 1.
++ *            WGPEER_A_FLIP_MSB: NLA_U16
+  *        0: NLA_NESTED
+  *            ...
+  *        ...
+@@ -157,6 +161,7 @@
+ 	WGDEVICE_A_LISTEN_PORT,
+ 	WGDEVICE_A_FWMARK,
+ 	WGDEVICE_A_PEERS,
++	WGDEVICE_A_FLIP_MSB,
+ 	__WGDEVICE_A_LAST
+ };
+ #define WGDEVICE_A_MAX (__WGDEVICE_A_LAST - 1)
+@@ -180,6 +185,7 @@
+ 	WGPEER_A_TX_BYTES,
+ 	WGPEER_A_ALLOWEDIPS,
+ 	WGPEER_A_PROTOCOL_VERSION,
++	WGPEER_A_FLIP_MSB,
+ 	__WGPEER_A_LAST
+ };
+ #define WGPEER_A_MAX (__WGPEER_A_LAST - 1)

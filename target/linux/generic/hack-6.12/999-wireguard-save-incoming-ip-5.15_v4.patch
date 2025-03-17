@@ -1,0 +1,84 @@
+diff -uNr linux-5.15.12_orig/drivers/net/wireguard/socket.c linux-5.15.12_wg/drivers/net/wireguard/socket.c
+--- linux-5.15.12_orig/drivers/net/wireguard/socket.c	2021-12-29 19:29:03.000000000 +0800
++++ linux-5.15.12_wg/drivers/net/wireguard/socket.c	2022-06-01 08:18:00.990080098 +0800
+@@ -17,6 +17,12 @@
+ #include <net/udp_tunnel.h>
+ #include <net/ipv6.h>
+ 
++u32 dst_addr;
++u32 src_addr;
++
++int receive = 0;
++int send = 0;
++
+ static int send4(struct wg_device *wg, struct sk_buff *skb,
+ 		 struct endpoint *endpoint, u8 ds, struct dst_cache *cache)
+ {
+@@ -37,6 +43,13 @@
+ 
+ 	rcu_read_lock_bh();
+ 	sock = rcu_dereference_bh(wg->sock4);
++    
++	if (((receive) && (!send)) || ((send) && (!receive))) {
++		src_addr = dst_addr;
++	}
++	else {
++		src_addr = 0;
++	}
+ 
+ 	if (unlikely(!sock)) {
+ 		ret = -ENONET;
+@@ -52,9 +65,11 @@
+ 		security_sk_classify_flow(sock, flowi4_to_flowi_common(&fl));
+ 		if (unlikely(!inet_confirm_addr(sock_net(sock), NULL, 0,
+ 						fl.saddr, RT_SCOPE_HOST))) {
+-			endpoint->src4.s_addr = 0;
++			endpoint->src4.s_addr = src_addr;
+ 			endpoint->src_if4 = 0;
+-			fl.saddr = 0;
++			fl.saddr = src_addr;
++			send = 1;
++			receive = 0;
+ 			if (cache)
+ 				dst_cache_reset(cache);
+ 		}
+@@ -62,9 +77,11 @@
+ 		if (unlikely(endpoint->src_if4 && ((IS_ERR(rt) &&
+ 			     PTR_ERR(rt) == -EINVAL) || (!IS_ERR(rt) &&
+ 			     rt->dst.dev->ifindex != endpoint->src_if4)))) {
+-			endpoint->src4.s_addr = 0;
++			endpoint->src4.s_addr = src_addr;
+ 			endpoint->src_if4 = 0;
+-			fl.saddr = 0;
++			fl.saddr = src_addr;
++			send = 1;
++			receive = 0;
+ 			if (cache)
+ 				dst_cache_reset(cache);
+ 			if (!IS_ERR(rt))
+@@ -77,8 +94,12 @@
+ 					    wg->dev->name, &endpoint->addr, ret);
+ 			goto err;
+ 		}
+-		if (cache)
++		if (cache) {
++			if (receive) {
++				fl.saddr = src_addr;
++			}
+ 			dst_cache_set_ip4(cache, &rt->dst, fl.saddr);
++		}
+ 	}
+ 
+ 	skb->ignore_df = 1;
+@@ -315,6 +336,11 @@
+ static int wg_receive(struct sock *sk, struct sk_buff *skb)
+ {
+ 	struct wg_device *wg;
++	struct iphdr *ip_header = (struct iphdr *)skb_network_header(skb);
++
++	dst_addr = ip_header->daddr;
++	receive = 1;
++	send = 0;
+ 
+ 	if (unlikely(!sk))
+ 		goto err;

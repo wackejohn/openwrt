@@ -1,0 +1,31 @@
+diff -uNr linux-5.9.1_orig/drivers/net/wireguard/socket.c linux-5.9.1/drivers/net/wireguard/socket.c
+--- linux-5.9.1_orig/drivers/net/wireguard/socket.c	2020-10-17 14:31:22.000000000 +0800
++++ linux-5.9.1/drivers/net/wireguard/socket.c	2020-11-01 21:10:59.910478845 +0800
+@@ -82,6 +82,13 @@
+ 	}
+ 
+ 	skb->ignore_df = 1;
++	if (skb->sk) {
++		/* Yep it is in irq but safe to call skb->destructor()
++		 */
++		skb->destructor(skb);
++		skb->sk = NULL;
++		skb->destructor = NULL;
++	}
+ 	udp_tunnel_xmit_skb(rt, sock, skb, fl.saddr, fl.daddr, ds,
+ 			    ip4_dst_hoplimit(&rt->dst), 0, fl.fl4_sport,
+ 			    fl.fl4_dport, false, false);
+@@ -149,6 +156,13 @@
+ 	}
+ 
+ 	skb->ignore_df = 1;
++	if (skb->sk) {
++		/* Yep it is in irq but safe to call skb->destructor()
++		 */
++		skb->destructor(skb);
++		skb->sk = NULL;
++		skb->destructor = NULL;
++	}
+ 	udp_tunnel6_xmit_skb(dst, sock, skb, skb->dev, &fl.saddr, &fl.daddr, ds,
+ 			     ip6_dst_hoplimit(dst), 0, fl.fl6_sport,
+ 			     fl.fl6_dport, false);

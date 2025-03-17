@@ -1,0 +1,486 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+/dts-v1/;
+
+#include "ipq8074.dtsi"
+#include "ipq8074-ess.dtsi"
+#include "ipq8074-nss.dtsi"
+#include "ipq8074-hk-cpu.dtsi"
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	model = "OPPO CPE Router";
+	compatible = "oppo,cpe", "qcom,ipq8074";
+
+	aliases {
+		serial0 = &blsp1_uart5;
+
+		label-mac-device = &dp6;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		bootargs-append = " coherent_pool=2M swiotlb=1";
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		wps {
+			label = "wps";
+			gpios = <&tlmm 61 GPIO_ACTIVE_HIGH>;
+			linux,code = <KEY_WPS_BUTTON>;
+		};
+
+		reset {
+			label = "reset";
+			gpios = <&tlmm 60 GPIO_ACTIVE_HIGH>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+};
+
+&tlmm {
+	pcie_sdx_gpio: pcie_sdx_gpio {
+
+		mdm2ap_status {
+			pins = "gpio25";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-down;
+		};
+
+		ap2mdm_status {
+			pins = "gpio26";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-down;
+		};
+
+		ap2mdm_err_ftl {
+			pins = "gpio27";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-down;
+		};
+
+		ap2mdm_gp_rst_n {
+			pins = "gpio29";
+			function = "gpio";
+			drive-strength = <8>;
+			output-high;
+		};
+
+		sdx_pon_gpio {
+			pins = "gpio30";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+			output-high;
+		};
+
+		mdm2ap_err_ftl {
+			pins = "gpio33";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-down;
+		};
+	};
+
+	pcie0_wake_gpio: pcie0_wake_gpio {
+		pins = "gpio59";
+		function = "pcie0_wake";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+
+	mdio_pins: mdio-pins {
+		mdc {
+			pins = "gpio68";
+			function = "mdc";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		mdio {
+			pins = "gpio69";
+			function = "mdio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	button_pins {
+		reset_button {
+			pins = "gpio60";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		wps_button {
+			pins = "gpio61";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+};
+
+&mdio {
+	status = "okay";
+
+	pinctrl-0 = <&mdio_pins>;
+	pinctrl-names = "default";
+	reset-gpios = <&tlmm 37 GPIO_ACTIVE_LOW>;
+
+	ethernet-phy-package@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0>;
+
+		compatible = "qcom,qca8075-package";
+
+		qca8075_0: ethernet-phy@0 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <0>;
+		};
+
+		aqr113c_phy: ethernet-phy@5 {
+			compatible = "ethernet-phy-ieee802.3-c45";
+			reg = <7>;
+			reset-deassert-us = <10000>;
+			reset-gpios = <&tlmm 53 GPIO_ACTIVE_LOW>;
+			firmware-name = "marvell/AQR113_0x7.cld";
+			nvmem-cell-names = "firmware";
+			nvmem-cells = <&aqr_fw>;
+		};
+	};
+
+};
+
+&switch {
+	status = "okay";
+
+	switch_lan_bmp = <ESS_PORT1>;
+	switch_wan_bmp = <ESS_PORT6>;
+	switch_mac_mode = <MAC_MODE_PSGMII>;
+	switch_mac_mode1 = <MAC_MODE_DISABLED>;
+	switch_mac_mode2 = <MAC_MODE_USXGMII>;
+
+	qcom,port_phyinfo {
+		port@1 {
+			port_id = <1>;
+			phy_address = <0>;
+		};
+
+		port@6 {
+			port_id = <6>;
+			phy_address = <7>;
+			compatible = "ethernet-phy-ieee802.3-c45";
+			ethernet-phy-ieee802.3-c45;
+		};
+	};
+};
+
+&edma {
+	status = "okay";
+};
+
+&dp1 {
+	status = "okay";
+	phy-handle = <&qca8075_0>;
+	label = "lan";
+	nvmem-cells = <&macaddr_lan>;
+	nvmem-cell-names = "mac-address";
+};
+
+&dp6 {
+	status = "okay";
+	qcom,mactype = <1>;
+	phy-handle = <&aqr113c_phy>;
+	label = "wan";
+	phy-mode = "usxgmii";
+	nvmem-cells = <&macaddr_wan>;
+	nvmem-cell-names = "mac-address";
+};
+
+&blsp1_uart5 {
+	status = "okay";
+};
+
+&blsp1_i2c2 {
+	status = "okay";
+
+	g761@3e {
+		compatible = "gmt,g761";
+		reg = <0x3e>;
+		fan_gear_mode = <0>;
+		fan_start = <1>;
+		pwm_polarity = <0>;
+	};
+};
+
+&qpic_bam {
+	status = "okay";
+};
+
+&qpic_nand {
+	status = "okay";
+
+	nand@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0>;
+		nand-ecc-strength = <4>;
+		nand-ecc-step-size = <512>;
+		nand-bus-width = <8>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "0:sbl1";
+				reg = <0x00 0x100000>;
+				read-only;
+			};
+
+			partition@100000 {
+				label = "0:mibib";
+				reg = <0x100000 0x100000>;
+				read-only;
+			};
+
+			partition@200000 {
+				label = "0:bootconfig";
+				reg = <0x200000 0x80000>;
+				read-only;
+			};
+
+			partition@280000 {
+				label = "0:bootconfig_1";
+				reg = <0x280000 0x80000>;
+				read-only;
+			};
+
+			partition@300000 {
+				label = "0:qsee";
+				reg = <0x300000 0x300000>;
+				read-only;
+			};
+
+			partition@600000 {
+				label = "0:qsee_1";
+				reg = <0x600000 0x300000>;
+				read-only;
+			};
+
+			partition@900000 {
+				label = "0:devcfg";
+				reg = <0x900000 0x80000>;
+				read-only;
+			};
+
+			partition@980000 {
+				label = "0:devcfg_1";
+				reg = <0x980000 0x80000>;
+				read-only;
+			};
+
+			partition@a00000 {
+				label = "0:apdp";
+				reg = <0xa00000 0x80000>;
+				read-only;
+			};
+
+			partition@a80000 {
+				label = "0:apdp_1";
+				reg = <0xa80000 0x80000>;
+				read-only;
+			};
+
+			partition@b00000 {
+				label = "0:rpm";
+				reg = <0xb00000 0x80000>;
+				read-only;
+			};
+
+			partition@b80000 {
+				label = "0:rpm_1";
+				reg = <0xb80000 0x80000>;
+				read-only;
+			};
+
+			partition@c00000 {
+				label = "0:cdt";
+				reg = <0xc00000 0x80000>;
+				read-only;
+			};
+
+			partition@c80000 {
+				label = "0:cdt_1";
+				reg = <0xc80000 0x80000>;
+				read-only;
+			};
+
+			partition@d00000 {
+				label = "0:appsblenv";
+				reg = <0xd00000 0x80000>;
+			};
+
+			partition@d80000 {
+				label = "0:appsbl";
+				reg = <0xd80000 0x100000>;
+				read-only;
+			};
+
+			partition@e80000 {
+				label = "0:appsbl_1";
+				reg = <0xe80000 0x100000>;
+				read-only;
+			};
+
+			partition@f80000 {
+				label = "0:art";
+				reg = <0xf80000 0x80000>;
+				read-only;
+			};
+
+			partition@1000000 {
+				label = "rootfs";
+				reg = <0x1000000 0x1ae00000>;
+			};
+
+			partition@1be00000 {
+				label = "0:wififw";
+				reg = <0x1be00000 0x900000>;
+			};
+
+			partition@1c700000 {
+				label = "rootfs_1";
+				reg = <0x1c700000 0x1ae00000>;
+			};
+
+			partition@37500000 {
+				label = "0:wififw_1";
+				reg = <0x37500000 0x900000>;
+			};
+
+			partition@37e00000 {
+				label = "0:ethphyfw";
+				reg = <0x37e00000 0x80000>;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_lan: macaddr@0 {
+						reg = <0x0 0x6>;
+					};
+
+					macaddr_wan: macaddr@1 {
+						reg = <0x6 0x6>;
+					};
+
+					aqr_fw: firmware@24 {
+						reg = <0x24 0x49802>;
+					};
+				};
+			};
+
+			partition@37e80000 {
+				label = "0:reserved";
+				reg = <0x37e80000 0x500000>;
+			};
+
+			partition@38380000 {
+				label = "0:factory";
+				reg = <0x38380000 0xfe0000>;
+			};
+
+			partition@39360000 {
+				label = "0:oppo_data";
+				reg = <0x39360000 0x6500000>;
+			};
+		};
+	};
+};
+
+&blsp1_spi1 {
+	pinctrl-0 = <&spi_0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	flash@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0>;
+		linux,modalias = "m25p80", "mx25u6435f", "mx30uf2g18ac", "n25q128a11";
+		compatible = "micron, mx25u6435f", "jedec,spi-nor";
+		spi-max-frequency = <50000000>;
+		use-default-sizes;
+	};
+};
+
+&qusb_phy_0 {
+	status = "okay";
+};
+
+&qusb_phy_1 {
+	status = "okay";
+};
+
+&ssphy_0 {
+	status = "okay";
+};
+
+&ssphy_1 {
+	status = "okay";
+};
+
+&usb_0 {
+	status = "okay";
+};
+
+&usb_1 {
+	status = "okay";
+};
+
+&wifi{
+	status = "okay";
+
+	qcom,ath11k-calibration-variant = "OPPO-CPE";
+};
+
+&pcie_qmp0 {
+	status = "okay";
+};
+
+&pcie0 {
+	status = "okay";
+	perst-gpios = <&tlmm 58 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&pcie_sdx_gpio &pcie0_wake_gpio>;
+	pinctrl-names = "default";
+};
+
+&blsp1_i2c2 {
+	status = "okay";
+};
+
+&cryptobam {
+	status = "okay";
+};
+
+&crypto {
+	status = "okay";
+};
+
+&prng {
+	status = "okay";
+};
