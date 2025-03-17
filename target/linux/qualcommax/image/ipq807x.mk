@@ -271,6 +271,51 @@ endif
 endef
 TARGET_DEVICES += netgear_rax120v2
 
+define Device/elfcs_elf1
+	$(call Device/FitImage)
+	$(call Device/UbiFit)
+	DEVICE_VENDOR := ELFCS
+	DEVICE_MODEL := ELF1
+	BLOCKSIZE := 128k
+	PAGESIZE := 2048
+	DEVICE_DTS_CONFIG := config@hk01.c2
+	SOC := ipq8074
+	KERNEL_SIZE := 29696k
+	DEVICE_PACKAGES := kmod-spi-gpio kmod-spi-bitbang ipq-wifi-elfcs_elf1
+	IMAGE/sysupgrade.bin := append-kernel | pad-offset $$$$(BLOCKSIZE) 64 | sysupgrade-tar kernel=$$$$@ | append-metadata
+endef
+TARGET_DEVICES += elfcs_elf1
+
+define Device/qualcomm_hk09
+	$(call Device/FitImage)
+	$(call Device/UbiFit)
+	DEVICE_VENDOR := Qualcomm
+	DEVICE_MODEL := HK09
+	BLOCKSIZE := 256k
+	PAGESIZE := 4096
+	DEVICE_DTS_CONFIG := config@hk09
+	SOC := ipq8072
+	KERNEL_SIZE := 29696k
+	DEVICE_PACKAGES := kmod-spi-gpio kmod-spi-bitbang ipq-wifi-qualcomm_hk09
+	IMAGE/sysupgrade.bin := append-kernel | pad-offset $$$$(BLOCKSIZE) 64 | sysupgrade-tar kernel=$$$$@ | append-metadata
+endef
+TARGET_DEVICES += qualcomm_hk09
+
+define Device/oppo_cpe
+	$(call Device/FitImage)
+	$(call Device/UbiFit)
+	DEVICE_VENDOR := OPPO
+	DEVICE_MODEL := CPE
+	BLOCKSIZE := 128k
+	PAGESIZE := 2048
+	DEVICE_DTS_CONFIG := config@hk01.c5
+	SOC := ipq8074
+	KERNEL_SIZE := 29696k
+	DEVICE_PACKAGES := kmod-spi-gpio kmod-spi-bitbang ipq-wifi-oppo_cpe
+	IMAGE/sysupgrade.bin := append-kernel | pad-offset $$$$(BLOCKSIZE) 64 | sysupgrade-tar kernel=$$$$@ | append-metadata
+endef
+TARGET_DEVICES += oppo_cpe
+
 define Device/netgear_sxk80
 	$(call Device/FitImage)
 	$(call Device/UbiFit)
@@ -354,9 +399,35 @@ define Device/prpl_haze
 	DEVICE_DTS_CONFIG := config@hk09
 	SOC := ipq8072
 	DEVICE_PACKAGES := ath11k-firmware-qcn9074 ipq-wifi-prpl_haze kmod-ath11k-pci \
-		kmod-fs-f2fs f2fs-tools kmod-leds-lp5562
+		kmod-fs-f2fs f2fs-tools mkf2fs kmod-leds-lp5562
 endef
 TARGET_DEVICES += prpl_haze
+
+define Device/tplink_tl-er2260t
+	$(call Device/FitImage)
+	$(call Device/UbiFit)
+	DEVICE_VENDOR := TP-Link
+	DEVICE_MODEL := TL-ER2260T
+	BLOCKSIZE := 128k
+	PAGESIZE := 2048
+	DEVICE_DTS_CONFIG := config@hk07
+	SOC := ipq8070
+	DEVICE_PACKAGES := kmod-usb-ledtrig-usbport
+endef
+TARGET_DEVICES += tplink_tl-er2260t
+
+define Device/tplink_tl-er2260t-1g
+	$(call Device/FitImage)
+	$(call Device/UbiFit)
+	DEVICE_VENDOR := TP-Link
+	DEVICE_MODEL := TL-ER2260T-1G
+	BLOCKSIZE := 128k
+	PAGESIZE := 2048
+	DEVICE_DTS_CONFIG := config@hk07
+	SOC := ipq8070
+	DEVICE_PACKAGES := kmod-usb-ledtrig-usbport
+endef
+TARGET_DEVICES += tplink_tl-er2260t-1g
 
 define Device/qnap_301w
 	$(call Device/FitImage)
@@ -374,9 +445,20 @@ define Device/redmi_ax6
 	$(call Device/xiaomi_ax3600)
 	DEVICE_VENDOR := Redmi
 	DEVICE_MODEL := AX6
-	DEVICE_PACKAGES := ipq-wifi-redmi_ax6
+	DEVICE_PACKAGES := ipq-wifi-redmi_ax6 -kmod-usb3 -kmod-usb-dwc3 -kmod-usb-dwc3-qcom -automount
 endef
 TARGET_DEVICES += redmi_ax6
+
+define Device/redmi_ax6-stock
+	$(call Device/redmi_ax6)
+	DEVICE_VARIANT := (stock layout)
+	DEVICE_ALT0_VENDOR := Redmi
+	DEVICE_ALT0_MODEL := AX6
+	DEVICE_ALT0_VARIANT := (custom U-Boot layout)
+	KERNEL_SIZE :=
+	ARTIFACTS :=
+endef
+TARGET_DEVICES += redmi_ax6-stock
 
 define Device/spectrum_sax1v1k
 	$(call Device/FitImage)
@@ -423,12 +505,14 @@ define Device/xiaomi_ax3600
 	$(call Device/UbiFit)
 	DEVICE_VENDOR := Xiaomi
 	DEVICE_MODEL := AX3600
+	DEVICE_VARIANT := (OpenWrt expand layout)
 	BLOCKSIZE := 128k
 	PAGESIZE := 2048
 	DEVICE_DTS_CONFIG := config@ac04
 	SOC := ipq8071
 	KERNEL_SIZE := 36608k
-	DEVICE_PACKAGES := ipq-wifi-xiaomi_ax3600 kmod-ath10k-ct-smallbuffers ath10k-firmware-qca9887-ct
+	DEVICE_PACKAGES := ipq-wifi-xiaomi_ax3600 kmod-ath10k-smallbuffers ath10k-firmware-qca9887 \
+		-kmod-usb3 -kmod-usb-dwc3 -kmod-usb-dwc3-qcom -automount
 ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
 	ARTIFACTS := initramfs-factory.ubi
 	ARTIFACT/initramfs-factory.ubi := append-image-stage initramfs-uImage.itb | ubinize-kernel
@@ -436,18 +520,30 @@ endif
 endef
 TARGET_DEVICES += xiaomi_ax3600
 
+define Device/xiaomi_ax3600-stock
+	$(call Device/xiaomi_ax3600)
+	DEVICE_VARIANT := (stock layout)
+	DEVICE_ALT0_VENDOR := Xiaomi
+	DEVICE_ALT0_MODEL := AX3600
+	DEVICE_ALT0_VARIANT := (custom U-Boot layout)
+	KERNEL_SIZE :=
+	ARTIFACTS :=
+endef
+TARGET_DEVICES += xiaomi_ax3600-stock
+
 define Device/xiaomi_ax9000
 	$(call Device/FitImage)
 	$(call Device/UbiFit)
 	DEVICE_VENDOR := Xiaomi
 	DEVICE_MODEL := AX9000
+	DEVICE_VARIANT := (OpenWrt expand layout)
 	BLOCKSIZE := 128k
 	PAGESIZE := 2048
 	DEVICE_DTS_CONFIG := config@hk14
 	SOC := ipq8072
 	KERNEL_SIZE := 57344k
 	DEVICE_PACKAGES := ipq-wifi-xiaomi_ax9000 kmod-ath11k-pci ath11k-firmware-qcn9074 \
-		kmod-ath10k-ct ath10k-firmware-qca9887-ct
+		kmod-ath10k ath10k-firmware-qca9887
 ifneq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),)
 	ARTIFACTS := initramfs-factory.ubi
 	ARTIFACT/initramfs-factory.ubi := append-image-stage initramfs-uImage.itb | ubinize-kernel
@@ -490,14 +586,27 @@ define Device/zte_mf269
 	$(call Device/UbiFit)
 	DEVICE_VENDOR := ZTE
 	DEVICE_MODEL := MF269
+	DEVICE_VARIANT := (OpenWrt expand layout)
 	BLOCKSIZE := 128k
 	PAGESIZE := 2048
 	DEVICE_DTS_CONFIG := config@ac04
 	SOC := ipq8071
 	KERNEL_SIZE := 53248k
 	DEVICE_PACKAGES := ipq-wifi-zte_mf269
+	DEVICE_COMPAT_VERSION := 1.1
+	DEVICE_COMPAT_MESSAGE := Partition table has changed, please flash new stock layout firmware instead
 endef
 TARGET_DEVICES += zte_mf269
+
+define Device/zte_mf269-stock
+	$(call Device/zte_mf269)
+	DEVICE_VARIANT := (stock layout)
+	DEVICE_ALT0_VENDOR := ZTE
+	DEVICE_ALT0_MODEL := MF269
+	DEVICE_ALT0_VARIANT := (custom U-Boot layout)
+	KERNEL_SIZE :=
+endef
+TARGET_DEVICES += zte_mf269-stock
 
 define Device/zyxel_nbg7815
 	$(call Device/FitImage)
