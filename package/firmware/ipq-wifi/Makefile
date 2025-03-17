@@ -36,6 +36,7 @@ ALLWIFIBOARDS:= \
 	cmcc_rm2-6 \
 	compex_wpq873 \
 	dynalink_dl-wrx36 \
+	elfcs_elf1 \
 	edgecore_eap102 \
 	edimax_cax1800 \
 	linksys_homewrk \
@@ -56,8 +57,10 @@ ALLWIFIBOARDS:= \
 	netgear_wax620 \
 	netgear_wax630 \
 	prpl_haze \
+	oppo_cpe \
 	qihoo_360v6 \
 	qnap_301w \
+	qualcomm_hk09 \
 	redmi_ax6 \
 	skspruce_wia3300-20 \
 	spectrum_sax1v1k \
@@ -179,6 +182,7 @@ $(eval $(call generate-ipq-wifi-package,cambiumnetworks_xe34,Cambium Networks XE
 $(eval $(call generate-ipq-wifi-package,cmcc_rm2-6,CMCC RM2-6))
 $(eval $(call generate-ipq-wifi-package,compex_wpq873,Compex WPQ-873))
 $(eval $(call generate-ipq-wifi-package,dynalink_dl-wrx36,Dynalink DL-WRX36))
+$(eval $(call generate-ipq-wifi-package,elfcs_elf1,ELFCS ELF1))
 $(eval $(call generate-ipq-wifi-package,edgecore_eap102,Edgecore EAP102))
 $(eval $(call generate-ipq-wifi-package,edimax_cax1800,Edimax CAX1800))
 $(eval $(call generate-ipq-wifi-package,linksys_homewrk,Linksys HomeWRK))
@@ -200,6 +204,8 @@ $(eval $(call generate-ipq-wifi-package,netgear_wax620,Netgear WAX620))
 $(eval $(call generate-ipq-wifi-package,netgear_wax630,Netgear WAX630))
 $(eval $(call generate-ipq-wifi-package,qihoo_360v6,Qihoo 360V6))
 $(eval $(call generate-ipq-wifi-package,qnap_301w,QNAP 301w))
+$(eval $(call generate-ipq-wifi-package,oppo_cpe,OPPO CPE))
+$(eval $(call generate-ipq-wifi-package,qualcomm_hk09,Qualcomm HK09))
 $(eval $(call generate-ipq-wifi-package,prpl_haze,prpl Haze))
 $(eval $(call generate-ipq-wifi-package,redmi_ax6,Redmi AX6))
 $(eval $(call generate-ipq-wifi-package,skspruce_wia3300-20,SKSpruce WIA3300-20))
